@@ -1,11 +1,12 @@
 import os
 import json
-import requests
-import subprocess
 import sys
+from src.forgejo import ForgejoClient
+from src.git_utils import format_diff_for_logging
+from src.agent import create_review_agent
 
 def main():
-    # Forgejo/GitHub Actions provide the event path in an environment variable
+    # Load event data
     event_path = os.getenv("GITHUB_EVENT_PATH")
     if not event_path:
         print("Error: GITHUB_EVENT_PATH not found.")
@@ -14,67 +15,86 @@ def main():
     with open(event_path, 'r') as f:
         event_data = json.load(f)
 
-    # Check if this is a pull request event
-    if "pull_request" not in event_data:
-        print("This action only supports pull_request events.")
-        sys.exit(0)
-
-    pr_number = event_data["pull_request"]["number"]
+    event_name = os.getenv("GITHUB_EVENT_NAME")
     repository = os.getenv("GITHUB_REPOSITORY")
     api_url = os.getenv("GITHUB_API_URL", "https://forgejo.example.com/api/v1")
     token = os.getenv("GITHUB_TOKEN")
 
     if not token:
-        print("Error: GITHUB_TOKEN is required to post comments.")
+        print("Error: GITHUB_TOKEN is required.")
         sys.exit(1)
 
-    print(f"Processing PR #{pr_number} in {repository}...")
+    # Initialize Forgejo Client
+    client = ForgejoClient(api_url, token, repository)
 
-    # 1. Get the git diff via Forgejo API
-    print("--- GIT DIFF START ---")
-    diff_url = f"{api_url}/repos/{repository}/pulls/{pr_number}.diff"
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3.diff"
-    }
+    # Logic for Pull Request Synchronize/Open (Print Diff & Success)
+    if event_name == "pull_request":
+        pr_number = event_data["pull_request"]["number"]
+        print(f"Processing PR #{pr_number} in {repository}...")
 
-    try:
-        diff_response = requests.get(diff_url, headers=headers)
-        if diff_response.status_code == 200:
-            diff_output = diff_response.text.strip()
-            if not diff_output:
-                print("The diff is empty.")
-            else:
-                print(diff_output)
+        # 1. Fetch and print the diff
+        diff_text = client.get_pr_diff(pr_number)
+        print(format_diff_for_logging(diff_text))
+
+        # 2. Leave a success comment
+        success_message = "Successfully processed the pull request and printed the diff to logs!"
+        if client.post_pr_comment(pr_number, success_message):
+            print("Successfully posted success comment.")
         else:
-            print(f"Error fetching diff: {diff_response.status_code}")
-            print(diff_response.text)
-    except Exception as e:
-        print(f"Error: Could not get git diff via API: {e}")
-    print("--- GIT DIFF END ---")
+            sys.exit(1)
 
-    # 2. Leave a comment on the PR
-    # Forgejo API is compatible with GitHub API for comments
-    comment_url = f"{api_url}/repos/{repository}/issues/{pr_number}/comments"
+    # Logic for Comment Trigger (#review)
+    elif event_name == "issue_comment":
+        # Check if it's a pull request comment (Forgejo/Gitea uses issue_comment for PRs too)
+        if "pull_request" not in event_data["issue"]:
+            print("Comment is not on a pull request. Ignoring.")
+            sys.exit(0)
 
-    payload = {
-        "body": "Successfully processed the pull request and printed the diff to logs!"
-    }
+        comment_body = event_data["comment"]["body"].strip()
+        if "#review" not in comment_body:
+            print("Comment does not contain #review. Ignoring.")
+            sys.exit(0)
 
-    headers = {
-        "Authorization": f"token {token}",
-        "Content-Type": "application/json"
-    }
+        pr_number = event_data["issue"]["number"]
+        print(f"Triggering AI Review for PR #{pr_number}...")
 
-    print(f"Posting comment to {comment_url}...")
-    response = requests.post(comment_url, json=payload, headers=headers)
+        # Verify Google API Key for the Agent
+        if not os.getenv("GOOGLE_API_KEY"):
+            error_msg = "Error: GOOGLE_API_KEY is not set. Cannot run AI review."
+            print(error_msg)
+            client.post_pr_comment(pr_number, error_msg)
+            sys.exit(1)
 
-    if response.status_code == 201:
-        print("Successfully posted comment.")
+        # 1. Initialize the Agent
+        agent = create_review_agent(client, pr_number)
+
+        # 2. Run the Agent
+        try:
+            # We pass a simple prompt to start the review process
+            # The agent has tools to get the diff and read files.
+            response = agent.run("Please review the changes in this pull request and provide your feedback.")
+
+            # 3. Post the agent's response back to the PR
+            if response and hasattr(response, 'text'):
+                review_content = response.text
+            else:
+                review_content = str(response)
+
+            if client.post_pr_comment(pr_number, review_content):
+                print("Successfully posted AI review.")
+            else:
+                print("Failed to post AI review comment.")
+                sys.exit(1)
+
+        except Exception as e:
+            error_msg = f"An error occurred during AI review: {str(e)}"
+            print(error_msg)
+            client.post_pr_comment(pr_number, error_msg)
+            sys.exit(1)
+
     else:
-        print(f"Failed to post comment. Status code: {response.status_code}")
-        print(f"Response: {response.text}")
-        sys.exit(1)
+        print(f"Unsupported event type: {event_name}")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

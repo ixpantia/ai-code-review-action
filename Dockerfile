@@ -17,6 +17,7 @@ RUN uv pip install --system --no-cache -r pyproject.toml
 
 # Copy the rest of the application
 COPY main.py ./
+COPY src/ ./src/
 
 # Run the application using the system python where dependencies are now installed
 ENTRYPOINT ["python", "/app/main.py"]
