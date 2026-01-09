@@ -30,32 +30,28 @@ def main():
 
     print(f"Processing PR #{pr_number} in {repository}...")
 
-    # 1. Print the git diff
-    # We assume the workspace is already checked out and we can compare against the base branch
-    # Or we can use the Forgejo API to get the diff. Using git CLI is often easier in actions.
+    # 1. Get the git diff via Forgejo API
+    print("--- GIT DIFF START ---")
+    diff_url = f"{api_url}/repos/{repository}/pulls/{pr_number}.diff"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3.diff"
+    }
+
     try:
-        # Avoid "dubious ownership" errors in Docker containers
-        workspace = os.getenv("GITHUB_WORKSPACE", "/github/workspace")
-        subprocess.run(["git", "config", "--global", "--add", "safe.directory", workspace], check=True)
-
-        # Fetch base branch to ensure we can diff against it
-        base_ref = event_data["pull_request"]["base"]["ref"]
-        subprocess.run(["git", "fetch", "origin", base_ref], check=True)
-
-        print("--- GIT DIFF START ---")
-        diff_output = subprocess.check_output(
-            ["git", "diff", f"origin/{base_ref}...HEAD"],
-            text=True
-        ).strip()
-
-        if not diff_output:
-            print("The diff is empty.")
+        diff_response = requests.get(diff_url, headers=headers)
+        if diff_response.status_code == 200:
+            diff_output = diff_response.text.strip()
+            if not diff_output:
+                print("The diff is empty.")
+            else:
+                print(diff_output)
         else:
-            print(diff_output)
-        print("--- GIT DIFF END ---")
+            print(f"Error fetching diff: {diff_response.status_code}")
+            print(diff_response.text)
     except Exception as e:
-        print(f"Warning: Could not get git diff via CLI: {e}")
-        # Fallback: could use API but let's stick to CLI for now as it's standard for actions
+        print(f"Error: Could not get git diff via API: {e}")
+    print("--- GIT DIFF END ---")
 
     # 2. Leave a comment on the PR
     # Forgejo API is compatible with GitHub API for comments
