@@ -12,11 +12,11 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies
-RUN uv sync --frozen --no-cache
+# Install dependencies globally in the image so they are available to the python interpreter
+RUN uv pip install --system --no-cache -r pyproject.toml
 
 # Copy the rest of the application
 COPY main.py ./
 
-# Run the application
-ENTRYPOINT ["uv", "run", "python", "/app/main.py"]
+# Run the application using the system python where dependencies are now installed
+ENTRYPOINT ["python", "/app/main.py"]
