@@ -76,12 +76,26 @@ async def run_ai_review(client, pr_number, google_api_key):
         if not full_response_text:
             full_response_text = "AI Review completed but no feedback was generated."
         else:
-            # Clean up the response to extract only markdown if the model wrapped it in code blocks
             full_response_text = full_response_text.strip()
-            if full_response_text.startswith("```markdown"):
-                full_response_text = full_response_text.removeprefix("```markdown").removesuffix("```").strip()
-            elif full_response_text.startswith("```"):
-                full_response_text = full_response_text.removeprefix("```").removesuffix("```").strip()
+
+            # Attempt to extract markdown_content if the agent returned JSON (via output_schema)
+            try:
+                # Handle cases where the model might wrap the JSON response in backticks
+                content_to_parse = full_response_text
+                if content_to_parse.startswith("```"):
+                    content_to_parse = content_to_parse.strip("`").strip()
+                    if content_to_parse.startswith("json"):
+                        content_to_parse = content_to_parse[4:].strip()
+
+                parsed_data = json.loads(content_to_parse)
+                if isinstance(parsed_data, dict) and "markdown_content" in parsed_data:
+                    full_response_text = parsed_data["markdown_content"]
+            except (json.JSONDecodeError, ValueError):
+                # Fallback to existing markdown cleaning logic if not JSON or parsing fails
+                if full_response_text.startswith("```markdown"):
+                    full_response_text = full_response_text.removeprefix("```markdown").removesuffix("```").strip()
+                elif full_response_text.startswith("```"):
+                    full_response_text = full_response_text.removeprefix("```").removesuffix("```").strip()
 
         # Append metrics in a hidden details section
         metrics_details = f"""

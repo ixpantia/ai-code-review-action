@@ -1,10 +1,16 @@
 import os
+from pydantic import BaseModel
 from google.adk.agents.llm_agent import Agent
+from google.adk.agents.sequential_agent import SequentialAgent
 from .forgejo import ForgejoClient
+
+class ReviewOutput(BaseModel):
+    markdown_content: str
 
 def create_review_agent(client: ForgejoClient, pr_number: int):
     """
-    Creates an ADK agent configured for code review.
+    Creates a SequentialAgent that first reviews the code and then formats the output
+    into a clean schema to avoid conversational filler or markdown wrapping issues.
     """
 
     def read_file_content(path: str) -> str:
@@ -32,7 +38,8 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
         diff = client.get_pr_diff(pr_number)
         return diff if diff else "Error: Could not retrieve diff."
 
-    instruction = """
+    # 1. The Reviewer Agent: Focuses on finding issues and generating content.
+    reviewer_instruction = """
     You are an expert software engineer performing a code review.
 
     Your goal is to provide constructive feedback on the provided Pull Request.
@@ -45,19 +52,46 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
        - Code style and readability issues.
        - Missing tests or documentation.
 
-    Format your response as a professional Markdown comment for the Pull Request.
-    Be concise but thorough. If the code looks great, say so!
-
-    IMPORTANT: Your response MUST consist ONLY of the final Markdown content you wish to post as a comment. Do not include any introductory text, thought process, or conversational filler like "Okay, I'm ready to review..." or "Here's my feedback:". Output only the Markdown.
+    Provide your findings in a structured way.
     """
 
-    # Note: Ensure GOOGLE_API_KEY is set in the environment
-    agent = Agent(
+    reviewer = Agent(
         model='gemini-2.0-flash',
-        name='code_reviewer',
-        description="An agent that reviews code changes in a Pull Request.",
-        instruction=instruction,
+        name='reviewer',
+        description="Analyzes the PR and identifies issues.",
+        instruction=reviewer_instruction,
         tools=[read_file_content, get_pull_request_diff],
+        output_key="review_findings"
     )
 
-    return agent
+    # 2. The Formatter Agent: Ensures the final output is extracted into a specific schema.
+    # The {review_findings} placeholder is automatically populated from the session state by ADK.
+    formatter_instruction = """
+    You are a technical editor. You will be provided with code review findings.
+    Your task is to transform these findings into a professional Markdown comment for a Pull Request.
+
+    FINDINGS TO FORMAT:
+    {review_findings}
+
+    CRITICAL RULES:
+    1. The 'markdown_content' field must contain ONLY the markdown you wish to post.
+    2. DO NOT include any introductory text or conversational filler (e.g., "Here is the review", "Okay, I see...").
+    3. DO NOT wrap the content in markdown code blocks like ```markdown in the final field.
+    4. Use clear headings, bullet points, and code blocks within the markdown for readability.
+    5. If the findings indicate the code is great, just say so concisely.
+    """
+
+    formatter = Agent(
+        model='gemini-2.0-flash',
+        name='formatter',
+        description="Formats review findings into a clean JSON schema.",
+        instruction=formatter_instruction,
+        output_schema=ReviewOutput,
+        output_key="final_review"
+    )
+
+    # The SequentialAgent runs them in order.
+    return SequentialAgent(
+        name='code_review_pipeline',
+        sub_agents=[reviewer, formatter]
+    )
