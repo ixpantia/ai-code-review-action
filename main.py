@@ -29,6 +29,9 @@ def run_ai_review(client, pr_number, google_api_key):
         user_id = "forgejo-bot"
         session_id = f"pr-{pr_number}"
 
+        # Ensure the session is created before running the agent
+        runner.session_service.create_session(user_id=user_id, session_id=session_id)
+
         # Prepare the initial message
         new_message = types.Content(
             parts=[types.Part(text="Please review the changes in this pull request and provide your feedback.")]
