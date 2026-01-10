@@ -1,5 +1,6 @@
 import requests
 import sys
+from urllib.parse import quote
 
 class ForgejoClient:
     def __init__(self, api_url, token, repository):
@@ -60,11 +61,16 @@ class ForgejoClient:
 
     def remove_label(self, pr_number, label_name):
         """Removes a label from a pull request."""
-        url = f"{self.api_url}/repos/{self.repository}/issues/{pr_number}/labels/{label_name}"
+        encoded_label = quote(label_name)
+        url = f"{self.api_url}/repos/{self.repository}/issues/{pr_number}/labels/{encoded_label}"
         try:
             response = requests.delete(url, headers=self.headers)
             if response.status_code == 204:
                 return True
+            elif response.status_code == 403:
+                print(f"Failed to remove label {label_name}. Status code: 403 (Forbidden). "
+                      "Ensure your token has write access to the repository.")
+                return False
             else:
                 print(f"Failed to remove label {label_name}. Status code: {response.status_code}")
                 return False

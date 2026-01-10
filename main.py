@@ -61,7 +61,7 @@ async def run_ai_review(client, pr_number, google_api_key, head_sha):
 
                     # If the event indicates a tool call is being made,
                     # it's not the final response yet.
-                    if part.call:
+                    if part.function_call:
                         current_turn_text = ""
 
             # Update the full response with the most recent text block
