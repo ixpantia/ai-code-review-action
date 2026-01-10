@@ -102,18 +102,26 @@ async def main():
         pr_number = pr_data["number"]
         action = event_data.get("action")
         labels = pr_data.get("labels", [])
-        print(pr_data)
+        print(labels)
 
         # Check if the "AI Codereview" label is present (case-insensitive)
-        target_label = "AI Codereview"
-        has_ai_label = any(l.get("name", "").lower() == target_label.lower() for l in labels)
+        target_label = "ai codereview"
+        has_ai_label = False
+        for label in labels:
+            print(label)
+            print(label.get("name", ""))
+            if label.get("name", "").lower() == target_label:
+                has_ai_label = True
 
         # Trigger on specific actions if the target label is present or being added
         # If the action is 'labeled', we only trigger if it's the target label being added
         # If 'opened' or 'synchronize', we trigger if the target label is already present
         should_trigger = False
         if action == "labeled":
-            if event_data.get("label", {}).get("name", "").lower() == target_label.lower():
+            label = event_data.get("label", {})
+            print(label)
+            print(label.get("name", ""))
+            if label.get("name", "").lower() == target_label:
                 should_trigger = True
         elif action in ["opened", "synchronize"]:
             if has_ai_label:
