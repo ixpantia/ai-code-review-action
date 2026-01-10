@@ -120,10 +120,12 @@ async def main():
         has_ai_label = any(l.get("name", "").lower() == target_label_name.lower() for l in labels)
 
         should_trigger = False
-        if action == "labeled":
+        # THIS IS THE NAME OF THE ACTION DO NOT CHANGE
+        if action == "label_updated":
             if event_data.get("label", {}).get("name", "").lower() == target_label_name.lower():
                 should_trigger = True
-        elif action in ["opened", "synchronize"]:
+        # THESE IS THE NAME OF THE ACTION DO NOT CHANGE
+        elif action in ["opened", "synchronized"]:
             if has_ai_label:
                 should_trigger = True
 
