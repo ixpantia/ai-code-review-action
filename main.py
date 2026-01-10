@@ -1,9 +1,71 @@
 import os
 import json
 import sys
+from google.adk.runners import InMemoryRunner
+from google.genai import types
 from src.forgejo import ForgejoClient
 from src.git_utils import format_diff_for_logging
 from src.agent import create_review_agent
+
+def run_ai_review(client, pr_number, google_api_key):
+    """ Helper function to execute the AI review process using ADK InMemoryRunner. """
+    print(f"Triggering AI Review for PR #{pr_number}...")
+
+    if not google_api_key:
+        error_msg = "Error: GOOGLE_API_KEY is not set. Please check your action configuration and secrets."
+        print(error_msg)
+        client.post_pr_comment(pr_number, error_msg)
+        return False
+
+    # 1. Initialize the Agent
+    agent = create_review_agent(client, pr_number)
+
+    # 2. Setup the Runner
+    # InMemoryRunner is the standard way to run an ADK agent in a script/CI environment
+    runner = InMemoryRunner(agent)
+
+    try:
+        # Create a session for the review
+        user_id = "forgejo-bot"
+        session_id = f"pr-{pr_number}"
+
+        # Prepare the initial message
+        new_message = types.Content(
+            parts=[types.Part(text="Please review the changes in this pull request and provide your feedback.")]
+        )
+
+        # 3. Execute the agent via the runner
+        # The runner returns a generator of events
+        events = runner.run(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=new_message
+        )
+
+        full_response_text = ""
+        for event in events:
+            # We collect the text parts from the agent's events
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        full_response_text += part.text
+
+        if not full_response_text:
+            full_response_text = "AI Review completed but no feedback was generated."
+
+        # 4. Post the agent's response back to the PR
+        if client.post_pr_comment(pr_number, full_response_text):
+            print("Successfully posted AI review.")
+            return True
+        else:
+            print("Failed to post AI review comment.")
+            return False
+
+    except Exception as e:
+        error_msg = f"An error occurred during AI review: {str(e)}"
+        print(error_msg)
+        client.post_pr_comment(pr_number, error_msg)
+        return False
 
 def main():
     # Load event data
@@ -19,6 +81,7 @@ def main():
     repository = os.getenv("GITHUB_REPOSITORY")
     api_url = os.getenv("GITHUB_API_URL", "https://forgejo.example.com/api/v1")
     token = os.getenv("GITHUB_TOKEN")
+    google_api_key = os.getenv("GOOGLE_API_KEY")
 
     if not token:
         print("Error: GITHUB_TOKEN is required.")
@@ -27,70 +90,31 @@ def main():
     # Initialize Forgejo Client
     client = ForgejoClient(api_url, token, repository)
 
-    # Logic for Pull Request Synchronize/Open (Print Diff & Success)
-    if event_name == "pull_request":
+    # Logic for Pull Request Events
+    if event_name in ["pull_request", "pull_request_target"]:
         pr_number = event_data["pull_request"]["number"]
-        print(f"Processing PR #{pr_number} in {repository}...")
+        action = event_data.get("action")
 
-        # 1. Fetch and print the diff
-        diff_text = client.get_pr_diff(pr_number)
-        print(format_diff_for_logging(diff_text))
-
-        # 2. Leave a success comment
-        success_message = "Successfully processed the pull request and printed the diff to logs!"
-        if client.post_pr_comment(pr_number, success_message):
-            print("Successfully posted success comment.")
-        else:
-            sys.exit(1)
+        if action in ["opened", "synchronize"]:
+            print(f"Processing PR #{pr_number} (Action: {action}) in {repository}...")
+            diff_text = client.get_pr_diff(pr_number)
+            print(format_diff_for_logging(diff_text))
+            client.post_pr_comment(pr_number, "Successfully processed the pull request and logged the diff.")
 
     # Logic for Comment Trigger (#review)
     elif event_name == "issue_comment":
-        # Check if it's a pull request comment (Forgejo/Gitea uses issue_comment for PRs too)
         if "pull_request" not in event_data["issue"]:
             print("Comment is not on a pull request. Ignoring.")
             sys.exit(0)
 
         comment_body = event_data["comment"]["body"].strip()
-        if "#review" not in comment_body:
+        if "#review" in comment_body:
+            pr_number = event_data["issue"]["number"]
+            if not run_ai_review(client, pr_number, google_api_key):
+                sys.exit(1)
+        else:
             print("Comment does not contain #review. Ignoring.")
             sys.exit(0)
-
-        pr_number = event_data["issue"]["number"]
-        print(f"Triggering AI Review for PR #{pr_number}...")
-
-        # Verify Google API Key for the Agent
-        if not os.getenv("GOOGLE_API_KEY"):
-            error_msg = "Error: GOOGLE_API_KEY is not set. Cannot run AI review."
-            print(error_msg)
-            client.post_pr_comment(pr_number, error_msg)
-            sys.exit(1)
-
-        # 1. Initialize the Agent
-        agent = create_review_agent(client, pr_number)
-
-        # 2. Run the Agent
-        try:
-            # We pass a simple prompt to start the review process
-            # The agent has tools to get the diff and read files.
-            response = agent.run("Please review the changes in this pull request and provide your feedback.")
-
-            # 3. Post the agent's response back to the PR
-            if response and hasattr(response, 'text'):
-                review_content = response.text
-            else:
-                review_content = str(response)
-
-            if client.post_pr_comment(pr_number, review_content):
-                print("Successfully posted AI review.")
-            else:
-                print("Failed to post AI review comment.")
-                sys.exit(1)
-
-        except Exception as e:
-            error_msg = f"An error occurred during AI review: {str(e)}"
-            print(error_msg)
-            client.post_pr_comment(pr_number, error_msg)
-            sys.exit(1)
 
     else:
         print(f"Unsupported event type: {event_name}")

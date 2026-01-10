@@ -51,7 +51,7 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
 
     # Note: Ensure GOOGLE_API_KEY is set in the environment
     agent = Agent(
-        model='gemini-2.5-flash',
+        model='gemini-2.0-flash',
         name='code_reviewer',
         description="An agent that reviews code changes in a Pull Request.",
         instruction=instruction,
