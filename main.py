@@ -108,13 +108,12 @@ async def main():
         target_label = "ai codereview"
         has_ai_label = False
         for label in labels:
-            label = label.lower()
             print(label)
-            print(label.get("name", ""))
+            label = label.get("name", "").lower()
             print(label)
             print(target_label)
             print(label == target_label)
-            if label.get("name", "").lower() == target_label:
+            if label == target_label:
                 has_ai_label = True
 
         # Trigger on specific actions if the target label is present or being added
