@@ -29,7 +29,7 @@ async def run_ai_review(client, pr_number, google_api_key, head_sha):
         user_id = "forgejo-bot"
         session_id = f"pr-{pr_number}"
 
-        # 3. Ensure the session is created (create_session is a coroutine in ADK)
+        # 3. Ensure the session is created
         await runner.session_service.create_session(
             app_name=app_name,
             user_id=user_id,
@@ -37,28 +37,41 @@ async def run_ai_review(client, pr_number, google_api_key, head_sha):
         )
 
         # 4. Prepare the initial message
+        # We emphasize that the output should ONLY be the review markdown.
         new_message = types.Content(
-            parts=[types.Part(text="Please review the changes in this pull request and provide your feedback.")]
+            parts=[types.Part(text="Please review the changes in this pull request. Provide ONLY your final professional Markdown feedback for the PR comment. Do not include any meta-talk, planning, or internal thought process in your output.")]
         )
 
-        # 5. Execute the agent via run_async (the primary way to run in an async context)
+        # 5. Execute the agent via run_async
         full_response_text = ""
+        current_turn_text = ""
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
             new_message=new_message
         ):
-            # We collect the text parts from the agent's events
+            # We collect the text parts from the agent's events.
+            # If the model starts a new turn (e.g. after a tool response),
+            # we reset current_turn_text so that full_response_text
+            # only contains the final response from the agent.
             if event.content and event.content.parts:
                 for part in event.content.parts:
                     if part.text:
-                        full_response_text += part.text
+                        current_turn_text += part.text
+
+                    # If the event indicates a tool call is being made,
+                    # it's not the final response yet.
+                    if part.call:
+                        current_turn_text = ""
+
+            # Update the full response with the most recent text block
+            if current_turn_text:
+                full_response_text = current_turn_text
 
         if not full_response_text:
             full_response_text = "AI Review completed but no feedback was generated."
 
         # 6. Post the agent's response back to the PR
-        # Wrapping sync client call in to_thread to keep main loop responsive
         posted = await asyncio.to_thread(client.post_pr_comment, pr_number, full_response_text)
         if posted:
             print("Successfully posted AI review.")
@@ -102,33 +115,15 @@ async def main():
         pr_number = pr_data["number"]
         action = event_data.get("action")
         labels = pr_data.get("labels", [])
-        print(labels)
 
-        # Check if the "AI Codereview" label is present (case-insensitive)
-        target_label = "ai codereview"
-        has_ai_label = False
-        for label in labels:
-            print(label)
-            label = label.get("name", "").lower()
-            print(label)
-            print(target_label)
-            print(label == target_label)
-            if label == target_label:
-                has_ai_label = True
+        target_label_name = "AI Codereview"
+        has_ai_label = any(l.get("name", "").lower() == target_label_name.lower() for l in labels)
 
-        print(f"Has AI Label: {has_ai_label}")
-
-        # Trigger on specific actions if the target label is present or being added
-        # If the action is 'labeled', we only trigger if it's the target label being added
-        # If 'opened' or 'synchronize', we trigger if the target label is already present
         should_trigger = False
         if action == "labeled":
-            label = event_data.get("label", {})
-            print(label)
-            print(label.get("name", ""))
-            if label.get("name", "").lower() == target_label:
+            if event_data.get("label", {}).get("name", "").lower() == target_label_name.lower():
                 should_trigger = True
-        elif action in ["opened", "synchronized"]:
+        elif action in ["opened", "synchronize"]:
             if has_ai_label:
                 should_trigger = True
 
@@ -137,10 +132,9 @@ async def main():
             head_sha = pr_data["head"]["sha"]
             success = await run_ai_review(client, pr_number, google_api_key, head_sha)
 
-            # Remove the label after review completion
+            # Remove the label after review completion if it was present
             if has_ai_label:
-                # Find the exact label name as it appears on the PR to ensure successful deletion
-                actual_label = next((l.get("name") for l in labels if l.get("name", "").lower() == target_label.lower()), target_label)
+                actual_label = next((l.get("name") for l in labels if l.get("name", "").lower() == target_label_name.lower()), target_label_name)
                 client.remove_label(pr_number, actual_label)
 
             if not success:
@@ -168,8 +162,8 @@ async def main():
 
             # Remove the label after review completion if it exists
             labels = pr_details.get("labels", [])
-            target_label = "AI Codereview"
-            actual_label = next((l.get("name") for l in labels if l.get("name", "").lower() == target_label.lower()), None)
+            target_label_name = "AI Codereview"
+            actual_label = next((l.get("name") for l in labels if l.get("name", "").lower() == target_label_name.lower()), None)
             if actual_label:
                 client.remove_label(pr_number, actual_label)
 

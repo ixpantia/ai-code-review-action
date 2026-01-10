@@ -54,7 +54,9 @@ def create_review_agent(client: ForgejoClient, pr_number: int, head_sha: str):
        - Code style and readability issues.
        - Missing tests or documentation.
 
-    Format your response as a professional Markdown comment for the Pull Request.
+    IMPORTANT: Your response MUST contain ONLY the professional Markdown feedback to be posted as a comment.
+    Do not include any conversational filler, meta-talk, or descriptions of your internal process.
+    Start your final response directly with the review content.
     Be concise but thorough. If the code looks great, say so!
     """
 
