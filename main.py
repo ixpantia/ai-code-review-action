@@ -48,14 +48,23 @@ async def run_ai_review(client, pr_number, google_api_key):
             session_id=session_id,
             new_message=new_message
         ):
-            # We collect the text parts from the agent's events
+            # The agent is instructed to provide *only* the final Markdown comment.
+            # We capture the last text part, assuming it's the complete final response.
             if event.content and event.content.parts:
                 for part in event.content.parts:
                     if part.text:
-                        full_response_text += part.text
+                        # Overwrite to ensure we only keep the latest text from the agent
+                        full_response_text = part.text
 
         if not full_response_text:
             full_response_text = "AI Review completed but no feedback was generated."
+        else:
+            # Clean up the response to extract only markdown if the model wrapped it in code blocks
+            full_response_text = full_response_text.strip()
+            if full_response_text.startswith("```markdown"):
+                full_response_text = full_response_text.removeprefix("```markdown").removesuffix("```").strip()
+            elif full_response_text.startswith("```"):
+                full_response_text = full_response_text.removeprefix("```").removesuffix("```").strip()
 
         # 6. Post the agent's response back to the PR
         # Wrapping sync client call in to_thread to keep main loop responsive
@@ -96,19 +105,8 @@ async def main():
     # Initialize Forgejo Client
     client = ForgejoClient(api_url, token, repository)
 
-    # Logic for Pull Request Events
-    if event_name in ["pull_request", "pull_request_target"]:
-        pr_number = event_data["pull_request"]["number"]
-        action = event_data.get("action")
-
-        if action in ["opened", "synchronize"]:
-            print(f"Processing PR #{pr_number} (Action: {action}) in {repository}...")
-            diff_text = client.get_pr_diff(pr_number)
-            print(format_diff_for_logging(diff_text))
-            client.post_pr_comment(pr_number, "Successfully processed the pull request and logged the diff.")
-
     # Logic for Comment Trigger (#review)
-    elif event_name == "issue_comment":
+    if event_name == "issue_comment":
         if "pull_request" not in event_data["issue"]:
             print("Comment is not on a pull request. Ignoring.")
             return

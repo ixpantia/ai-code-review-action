@@ -47,6 +47,8 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
 
     Format your response as a professional Markdown comment for the Pull Request.
     Be concise but thorough. If the code looks great, say so!
+
+    IMPORTANT: Your response MUST consist ONLY of the final Markdown content you wish to post as a comment. Do not include any introductory text, thought process, or conversational filler like "Okay, I'm ready to review..." or "Here's my feedback:". Output only the Markdown.
     """
 
     # Note: Ensure GOOGLE_API_KEY is set in the environment
