@@ -108,8 +108,12 @@ async def main():
         target_label = "ai codereview"
         has_ai_label = False
         for label in labels:
+            label = label.lower()
             print(label)
             print(label.get("name", ""))
+            print(label)
+            print(target_label)
+            print(label == target_label)
             if label.get("name", "").lower() == target_label:
                 has_ai_label = True
 
