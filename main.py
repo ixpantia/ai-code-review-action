@@ -114,7 +114,6 @@ async def main():
             print(target_label)
             print(label == target_label)
             if label == target_label:
-                print("!!!")
                 has_ai_label = True
 
         print(f"Has AI Label: {has_ai_label}")
@@ -129,7 +128,7 @@ async def main():
             print(label.get("name", ""))
             if label.get("name", "").lower() == target_label:
                 should_trigger = True
-        elif action in ["opened", "synchronize"]:
+        elif action in ["opened", "synchronized"]:
             if has_ai_label:
                 should_trigger = True
 
