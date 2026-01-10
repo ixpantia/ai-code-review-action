@@ -43,6 +43,8 @@ async def run_ai_review(client, pr_number, google_api_key):
 
         # 5. Execute the agent via run_async (the primary way to run in an async context)
         full_response_text = ""
+        total_tokens_used = 0
+        files_read_count = 0
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
@@ -56,6 +58,21 @@ async def run_ai_review(client, pr_number, google_api_key):
                         # Overwrite to ensure we only keep the latest text from the agent
                         full_response_text = part.text
 
+            # Accumulate token usage if available in the event metadata
+            if hasattr(event, 'usage_metadata') and event.usage_metadata:
+                if hasattr(event.usage_metadata, 'total_token_count'):
+                    total_tokens_used += event.usage_metadata.total_token_count
+                else: # Fallback if total_token_count is not directly available
+                    if hasattr(event.usage_metadata, 'prompt_token_count'):
+                        total_tokens_used += event.usage_metadata.prompt_token_count
+                    if hasattr(event.usage_metadata, 'completion_token_count'):
+                        total_tokens_used += event.usage_metadata.completion_token_count
+
+            # Track files read by counting 'read_file_content' tool calls
+            if hasattr(event, 'tool_code_execution_event') and event.tool_code_execution_event:
+                if event.tool_code_execution_event.tool_name == "read_file_content":
+                    files_read_count += 1
+
         if not full_response_text:
             full_response_text = "AI Review completed but no feedback was generated."
         else:
@@ -65,6 +82,19 @@ async def run_ai_review(client, pr_number, google_api_key):
                 full_response_text = full_response_text.removeprefix("```markdown").removesuffix("```").strip()
             elif full_response_text.startswith("```"):
                 full_response_text = full_response_text.removeprefix("```").removesuffix("```").strip()
+
+        # Append metrics in a hidden details section
+        metrics_details = f"""
+
+<details>
+<summary>Metrics</summary>
+
+Tokens Used: {total_tokens_used}
+Files Read: {files_read_count}
+
+</details>
+"""
+        full_response_text += metrics_details
 
         # 6. Post the agent's response back to the PR
         # Wrapping sync client call in to_thread to keep main loop responsive
