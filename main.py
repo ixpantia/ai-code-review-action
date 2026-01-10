@@ -22,7 +22,8 @@ def run_ai_review(client, pr_number, google_api_key):
 
     # 2. Setup the Runner
     # InMemoryRunner is the standard way to run an ADK agent in a script/CI environment
-    runner = InMemoryRunner(agent)
+    app_name = "ix-code-review-bot"
+    runner = InMemoryRunner(agent, app_name=app_name)
 
     try:
         # Create a session for the review
@@ -30,7 +31,11 @@ def run_ai_review(client, pr_number, google_api_key):
         session_id = f"pr-{pr_number}"
 
         # Ensure the session is created before running the agent
-        runner.session_service.create_session(user_id=user_id, session_id=session_id)
+        runner.session_service.create_session(
+            app_name=app_name,
+            user_id=user_id,
+            session_id=session_id
+        )
 
         # Prepare the initial message
         new_message = types.Content(
