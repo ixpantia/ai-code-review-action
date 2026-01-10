@@ -1,29 +1,37 @@
-import os
 from google.adk.agents.llm_agent import Agent
 from .forgejo import ForgejoClient
 
-def create_review_agent(client: ForgejoClient, pr_number: int):
+def create_review_agent(client: ForgejoClient, pr_number: int, head_sha: str):
     """
     Creates an ADK agent configured for code review.
     """
 
     def read_file_content(path: str) -> str:
         """
-        Reads the content of a file from the repository at the given path.
+        Reads the content of a file from the repository at the given path using the Forgejo API.
         Useful for getting more context about the changes in the diff.
         """
-        # In a CI environment, the repo is usually checked out at GITHUB_WORKSPACE
-        workspace = os.getenv("GITHUB_WORKSPACE", ".")
-        full_path = os.path.join(workspace, path)
+        content = client.get_file_content(path, head_sha)
+        if content is None:
+            return f"Error: Could not retrieve file content for {path} at {head_sha}"
+        return content
 
-        try:
-            if not os.path.isfile(full_path):
-                return f"Error: File not found at {path}"
+    def get_conversation() -> str:
+        """
+        Returns the full comment conversation in the pull request.
+        Useful to understand context from previous discussions.
+        """
+        comments = client.get_pr_comments(pr_number)
+        if not comments:
+            return "No comments in this pull request yet."
 
-            with open(full_path, "r", encoding="utf-8") as f:
-                return f.read()
-        except Exception as e:
-            return f"Error reading file: {str(e)}"
+        formatted_comments = []
+        for c in comments:
+            user = c.get("user", {}).get("login", "unknown")
+            body = c.get("body", "")
+            formatted_comments.append(f"[{user}]: {body}")
+
+        return "\n---\n".join(formatted_comments)
 
     def get_pull_request_diff() -> str:
         """
@@ -37,8 +45,9 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
 
     Your goal is to provide constructive feedback on the provided Pull Request.
     1. Start by reviewing the 'git diff' to understand what changed.
-    2. If you need more context to understand a change, use 'read_file_content' to see the full file.
-    3. Look for:
+    2. Use 'get_conversation' to understand the context of the PR and any previous feedback or discussions.
+    3. If you need more context to understand a change, use 'read_file_content' to see the full file.
+    4. Look for:
        - Logic errors or bugs.
        - Security vulnerabilities.
        - Performance improvements.
@@ -55,7 +64,7 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
         name='code_reviewer',
         description="An agent that reviews code changes in a Pull Request.",
         instruction=instruction,
-        tools=[read_file_content, get_pull_request_diff],
+        tools=[read_file_content, get_pull_request_diff, get_conversation],
     )
 
     return agent
