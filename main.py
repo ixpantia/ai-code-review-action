@@ -114,7 +114,10 @@ async def main():
             print(target_label)
             print(label == target_label)
             if label == target_label:
+                print("!!!")
                 has_ai_label = True
+
+        print(f"Has AI Label: {has_ai_label}")
 
         # Trigger on specific actions if the target label is present or being added
         # If the action is 'labeled', we only trigger if it's the target label being added
