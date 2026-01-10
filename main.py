@@ -44,7 +44,7 @@ async def run_ai_review(client, pr_number, google_api_key):
         # 5. Execute the agent via run_async (the primary way to run in an async context)
         full_response_text = ""
         total_tokens_used = 0
-        files_read_count = 0
+        files_read = []
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
@@ -68,10 +68,12 @@ async def run_ai_review(client, pr_number, google_api_key):
                     if hasattr(event.usage_metadata, 'completion_token_count'):
                         total_tokens_used += event.usage_metadata.completion_token_count
 
-            # Track files read by counting 'read_file_content' tool calls
-            if hasattr(event, 'tool_code_execution_event') and event.tool_code_execution_event:
-                if event.tool_code_execution_event.tool_name == "read_file_content":
-                    files_read_count += 1
+            # Track files read by extracting arguments from 'read_file_content' tool calls
+            for fc in event.get_function_calls():
+                if fc.name == "read_file_content" and fc.args and "path" in fc.args:
+                    file_path = fc.args["path"]
+                    if file_path not in files_read:
+                        files_read.append(file_path)
 
         if not full_response_text:
             full_response_text = "AI Review completed but no feedback was generated."
@@ -98,13 +100,16 @@ async def run_ai_review(client, pr_number, google_api_key):
                     full_response_text = full_response_text.removeprefix("```").removesuffix("```").strip()
 
         # Append metrics in a hidden details section
+        files_list_md = "\n".join([f"- `{f}`" for f in files_read]) if files_read else "None"
         metrics_details = f"""
 
 <details>
 <summary>Metrics</summary>
 
-Tokens Used: {total_tokens_used}
-Files Read: {files_read_count}
+**Tokens Used:** {total_tokens_used}
+
+**Files Read:**
+{files_list_md}
 
 </details>
 """
