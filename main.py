@@ -102,6 +102,7 @@ async def main():
         pr_number = pr_data["number"]
         action = event_data.get("action")
         labels = pr_data.get("labels", [])
+        print(pr_data)
 
         # Check if the "AI Codereview" label is present (case-insensitive)
         target_label = "AI Codereview"
