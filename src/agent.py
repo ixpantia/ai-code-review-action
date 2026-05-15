@@ -4,6 +4,8 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.agents.sequential_agent import SequentialAgent
 from .forgejo import ForgejoClient
 
+_CHECKLISTS_DIR = os.path.join(os.path.dirname(__file__), "..", "code_reviews")
+
 class ReviewOutput(BaseModel):
     markdown_content: str
 
@@ -38,29 +40,70 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
         diff = client.get_pr_diff(pr_number)
         return diff if diff else "Error: Could not retrieve diff."
 
+    def get_general_review_checklist() -> str:
+        """
+        Returns the general code review checklist that applies to every pull request,
+        regardless of the programming language. Always call this tool.
+        """
+        checklist_path = os.path.join(_CHECKLISTS_DIR, "..", "code_review_general.md")
+        try:
+            with open(checklist_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            return f"Error reading general checklist: {str(e)}"
+
+    def get_sql_review_checklist() -> str:
+        """
+        Returns the SQL code review checklist.
+        Call this tool when the pull request contains SQL code (e.g. .sql files or SQL queries).
+        Use the returned checklist to guide your SQL-specific review findings.
+        """
+        checklist_path = os.path.join(_CHECKLISTS_DIR, "code_review_SQL.md")
+        try:
+            with open(checklist_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            return f"Error reading SQL checklist: {str(e)}"
+
+    def get_r_review_checklist() -> str:
+        """
+        Returns the R code review checklist.
+        Call this tool when the pull request contains R code (e.g. .R or .Rmd files).
+        Use the returned checklist to guide your R-specific review findings.
+        """
+        checklist_path = os.path.join(_CHECKLISTS_DIR, "code_review_R.md")
+        try:
+            with open(checklist_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            return f"Error reading R checklist: {str(e)}"
+
     # 1. The Reviewer Agent: Focuses on finding issues and generating content.
     reviewer_instruction = """
     You are an expert software engineer performing a code review.
 
     Your goal is to provide constructive feedback on the provided Pull Request.
-    1. Start by reviewing the 'git diff' to understand what changed.
-    2. If you need more context to understand a change, use 'read_file_content' to see the full file.
-    3. Look for:
-       - Logic errors or bugs.
-       - Security vulnerabilities.
-       - Performance improvements.
-       - Code style and readability issues.
-       - Missing tests or documentation.
 
-    Provide your findings in a structured way.
+    Follow these steps in order:
+    1. Call 'get_pull_request_diff' to retrieve the full diff and understand what changed.
+    2. Always call 'get_general_review_checklist' and apply every item to the review.
+    3. Based on the file extensions and content in the diff, decide which specialised checklists apply:
+       - If the diff includes SQL code or .sql files, call 'get_sql_review_checklist' and apply every item.
+       - If the diff includes R code or .R / .Rmd files, call 'get_r_review_checklist' and apply every item.
+       - It is valid to call both, one, or neither depending on what is actually present.
+    4. If you need more context about a specific file, use 'read_file_content'.
+    5. For each checklist item, note whether the code passes or fails, and explain why for any failures.
+    6. Also flag any general issues not covered by the checklists (logic errors, security vulnerabilities, performance, etc.).
+
+    Provide your findings in a structured way, grouped by checklist / category.
     """
 
     reviewer = Agent(
         model='gemini-2.0-flash',
         name='reviewer',
-        description="Analyzes the PR and identifies issues.",
+        description="Analyzes the PR and identifies issues using language-specific checklists.",
         instruction=reviewer_instruction,
-        tools=[read_file_content, get_pull_request_diff],
+        tools=[read_file_content, get_pull_request_diff, get_general_review_checklist, get_sql_review_checklist, get_r_review_checklist],
         output_key="review_findings"
     )
 

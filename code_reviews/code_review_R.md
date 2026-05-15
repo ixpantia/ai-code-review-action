@@ -1,0 +1,37 @@
+#### Checklist para R
+- [ ] Los tiquetes marcados en el comentario de la SF están cerrados.
+- [ ] El código resuelve el problema expuesto en los tiquetes
+- [ ] Las versiones están actualizadas
+    - [ ] Cambios en paquete en vendor
+    - [ ] Cambios en endpoints
+- [ ] El código sigue la [Guía Estilo R ixpantia](https://connect.ixpantia.com/codex/appendices/app_estilo_r.html) 
+    - [ ] Nombres de objetos están correctos (snake_case)
+    - [ ] El código está correctamente espaciado
+    - [ ] La longitud de líneas es de un máximo de 80
+    - [ ] Usa asignación `<-` para crear variables
+    - [ ] El código está indentado
+    - [ ] No hay variables hardcoded
+- [ ] La ortografía en comentarios y documentación es correcta
+- [ ] El código tiene suficientes comentarios para entenderlo 
+    - [ ] Los comentarios están actualizados
+- [ ] No hay pedazos de código comentado
+- [ ] Usa la sintaxis `paquete::función` de forma consistente (para código que irá a producción)
+    - [ ] Funciones dentro de otras, como `dplyr::n()`, `dplyr::n_distinct()` se toman en cuenta
+- [ ] Usa estructuras de datos apropiadas (por ejemplo, tibbles en vez de data.frame)
+- [ ] Se escriben datos tabulares con un tipo de datos distinto a `.csv`. Por ejemplo con `arrow::write_parquet()`
+    - [ ] Ninguna parte del código utiliza factores (no hay carga de datos con `read.csv`, por ejemplo)
+- [ ] Las funciones están documentadas apropiadamente con roxygen2
+    - [ ] Todos los parámetros están incluídos 
+    - [ ] Se detalla return y examples
+- [ ] No hay código repetido
+    - [ ] Se utilizan funciones para funcionalidades que se repiten
+- [ ] Uso correcto de `rv`: [Fuente](https://connect.ixpantia.com/codex/recetario/25-rv.html)
+    - [ ] Los paquetes utilizados están en `rv.lock`
+    - [ ] Existe un archivo `dependencies.R` y se agregan y quitan paquetes
+- [ ] Se usan paquetes apropiados
+- [ ] Se implementa manejo de errores
+- [ ] Hay pruebas escritas con testthat
+- [ ] La documentación está actualizada
+- [ ] No se expone información sensible
+    - [ ] Se tiene un manejo apropiado de secretos
+- [ ] Se utilizan variables ambientales cuando es necesario
