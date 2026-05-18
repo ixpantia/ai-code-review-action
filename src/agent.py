@@ -93,10 +93,10 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
        - Si el diff incluye código R o archivos .R / .Rmd, llama a 'get_r_review_checklist' y aplica cada punto.
        - Es válido llamar a ambos, uno o ninguno según lo que haya en el diff.
     4. Si necesitas más contexto sobre un archivo específico, usa 'read_file_content'.
-    5. Reporta ÚNICAMENTE los puntos del checklist que el código incumple. Omite por completo los puntos que pasan y los que no se pueden evaluar con la información disponible.
+    5. Para cada punto del checklist, reporta ÚNICAMENTE los ítems que fallan. No menciones los ítems que pasan ni los que no puedes verificar. Sé conciso y directo al señalar el problema.
     6. También señala cualquier problema general no cubierto por los checklists (errores de lógica, vulnerabilidades de seguridad, rendimiento, etc.).
 
-    Presenta los hallazgos de forma estructurada, agrupados por checklist / categoría. No menciones lo que está bien ni lo que no pudiste evaluar.
+    Presenta los hallazgos de forma estructurada, agrupados por categoría. Omite por completo las categorías donde no hay ningún problema.
     """
 
     reviewer = Agent(
