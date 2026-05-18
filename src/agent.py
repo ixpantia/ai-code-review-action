@@ -80,28 +80,29 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
 
     # 1. The Reviewer Agent: Focuses on finding issues and generating content.
     reviewer_instruction = """
-    You are an expert software engineer performing a code review.
+    Eres un ingeniero de software experto realizando una revisión de código.
 
-    Your goal is to provide constructive feedback on the provided Pull Request.
+    Tu objetivo es proporcionar retroalimentación constructiva sobre el Pull Request proporcionado.
+    Responde siempre en español.
 
-    Follow these steps in order:
-    1. Call 'get_pull_request_diff' to retrieve the full diff and understand what changed.
-    2. Always call 'get_general_review_checklist' and apply every item to the review.
-    3. Based on the file extensions and content in the diff, decide which specialised checklists apply:
-       - If the diff includes SQL code or .sql files, call 'get_sql_review_checklist' and apply every item.
-       - If the diff includes R code or .R / .Rmd files, call 'get_r_review_checklist' and apply every item.
-       - It is valid to call both, one, or neither depending on what is actually present.
-    4. If you need more context about a specific file, use 'read_file_content'.
-    5. For each checklist item, note whether the code passes or fails, and explain why for any failures.
-    6. Also flag any general issues not covered by the checklists (logic errors, security vulnerabilities, performance, etc.).
+    Sigue estos pasos en orden:
+    1. Llama a 'get_pull_request_diff' para obtener el diff completo y entender qué cambió.
+    2. Siempre llama a 'get_general_review_checklist' y aplica cada punto al review.
+    3. Según las extensiones de archivo y el contenido del diff, decide qué checklists especializados aplican:
+       - Si el diff incluye código SQL o archivos .sql, llama a 'get_sql_review_checklist' y aplica cada punto.
+       - Si el diff incluye código R o archivos .R / .Rmd, llama a 'get_r_review_checklist' y aplica cada punto.
+       - Es válido llamar a ambos, uno o ninguno según lo que haya en el diff.
+    4. Si necesitas más contexto sobre un archivo específico, usa 'read_file_content'.
+    5. Para cada punto del checklist, indica si el código pasa o falla, y explica el motivo de los fallos.
+    6. También señala cualquier problema general no cubierto por los checklists (errores de lógica, vulnerabilidades de seguridad, rendimiento, etc.).
 
-    Provide your findings in a structured way, grouped by checklist / category.
+    Presenta los hallazgos de forma estructurada, agrupados por checklist / categoría.
     """
 
     reviewer = Agent(
         model='gemini-2.0-flash',
         name='reviewer',
-        description="Analyzes the PR and identifies issues using language-specific checklists.",
+        description="Analiza el PR e identifica problemas usando checklists específicos por lenguaje.",
         instruction=reviewer_instruction,
         tools=[read_file_content, get_pull_request_diff, get_general_review_checklist, get_sql_review_checklist, get_r_review_checklist],
         output_key="review_findings"
@@ -110,24 +111,25 @@ def create_review_agent(client: ForgejoClient, pr_number: int):
     # 2. The Formatter Agent: Ensures the final output is extracted into a specific schema.
     # The {review_findings} placeholder is automatically populated from the session state by ADK.
     formatter_instruction = """
-    You are a technical editor. You will be provided with code review findings.
-    Your task is to transform these findings into a professional Markdown comment for a Pull Request.
+    Eres un editor técnico. Se te proporcionarán los hallazgos de una revisión de código.
+    Tu tarea es transformar esos hallazgos en un comentario profesional en Markdown para un Pull Request.
+    Responde siempre en español.
 
-    FINDINGS TO FORMAT:
+    HALLAZGOS A FORMATEAR:
     {review_findings}
 
-    CRITICAL RULES:
-    1. The 'markdown_content' field must contain ONLY the markdown you wish to post.
-    2. DO NOT include any introductory text or conversational filler (e.g., "Here is the review", "Okay, I see...").
-    3. DO NOT wrap the content in markdown code blocks like ```markdown in the final field.
-    4. Use clear headings, bullet points, and code blocks within the markdown for readability.
-    5. If the findings indicate the code is great, just say so concisely.
+    REGLAS CRÍTICAS:
+    1. El campo 'markdown_content' debe contener ÚNICAMENTE el markdown que deseas publicar.
+    2. NO incluyas texto introductorio ni relleno conversacional (ej: "Aquí está el review", "De acuerdo, veo que...").
+    3. NO envuelvas el contenido en bloques de código markdown como ```markdown en el campo final.
+    4. Usa encabezados claros, viñetas y bloques de código dentro del markdown para mayor legibilidad.
+    5. Si los hallazgos indican que el código está bien, dilo de forma concisa.
     """
 
     formatter = Agent(
         model='gemini-2.0-flash',
         name='formatter',
-        description="Formats review findings into a clean JSON schema.",
+        description="Formatea los hallazgos del review en un esquema JSON limpio.",
         instruction=formatter_instruction,
         output_schema=ReviewOutput,
         output_key="final_review"
